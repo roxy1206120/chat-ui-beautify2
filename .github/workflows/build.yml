@@ -17,41 +17,85 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Unzip Android project
+      - name: Check Android SDK
         run: |
-          mkdir -p project
-          unzip -q ChatUIBeautify_AndroidIDE_ready.zip -d project
-
-          echo "Files after unzip:"
-          find project -maxdepth 3 -type f | head -100
-
-          if [ -f "project/gradlew" ]; then
-            echo "Project found at project/"
-          elif [ -f "project/ChatUIBeautify_AndroidIDE_ready/gradlew" ]; then
-            echo "Project found in subfolder"
-            mv project/ChatUIBeautify_AndroidIDE_ready/* project/
-            mv project/ChatUIBeautify_AndroidIDE_ready/.[!.]* project/ 2>/dev/null || true
-          else
-            echo "ERROR: gradlew not found"
-            exit 1
-          fi
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          ls -la "$ANDROID_HOME"
+          yes | sdkmanager --licenses > /dev/null || true
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
 
-      - name: Build APK
-        working-directory: project
+      - name: Prepare Android project
         run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          mkdir -p app/src/main/java/com/chat/uibeautify
+          mkdir -p app/src/main/res/values
+
+          cp MainActivity.kt app/src/main/java/com/chat/uibeautify/MainActivity.kt
+          cp AndroidManifest.xml app/src/main/AndroidManifest.xml
+          cp styles.xml app/src/main/res/values/styles.xml
+
+          cat > app/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+
+          android {
+              namespace = "com.chat.uibeautify"
+              compileSdk = 35
+
+              defaultConfig {
+                  applicationId = "com.chat.uibeautify"
+                  minSdk = 23
+                  targetSdk = 35
+                  versionCode = 1
+                  versionName = "1.0"
+              }
+          }
+          EOF
+
+          cat > settings.gradle.kts <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          rootProject.name = "ChatUIBeautify"
+          include(":app")
+          EOF
+
+          cat > build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application") version "8.6.1" apply false
+              id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+          }
+          EOF
+
+      - name: Install Android SDK components
+        run: |
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build APK
+        run: |
+          gradle :app:assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ChatUIBeautify-debug
-          path: project/**/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/debug/*.apk
