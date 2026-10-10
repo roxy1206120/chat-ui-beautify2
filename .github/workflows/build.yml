@@ -1,0 +1,57 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Unzip Android project
+        run: |
+          mkdir -p project
+          unzip -q ChatUIBeautify_AndroidIDE_ready.zip -d project
+
+          echo "Files after unzip:"
+          find project -maxdepth 3 -type f | head -100
+
+          if [ -f "project/gradlew" ]; then
+            echo "Project found at project/"
+          elif [ -f "project/ChatUIBeautify_AndroidIDE_ready/gradlew" ]; then
+            echo "Project found in subfolder"
+            mv project/ChatUIBeautify_AndroidIDE_ready/* project/
+            mv project/ChatUIBeautify_AndroidIDE_ready/.[!.]* project/ 2>/dev/null || true
+          else
+            echo "ERROR: gradlew not found"
+            exit 1
+          fi
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Build APK
+        working-directory: project
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChatUIBeautify-debug
+          path: project/**/build/outputs/apk/debug/*.apk
